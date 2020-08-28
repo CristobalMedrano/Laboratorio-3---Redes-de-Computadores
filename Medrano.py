@@ -3,13 +3,14 @@
 #DATE: 21/08/2020
 #LABORATORY 3: MODULACIÓN ANALÓGICA
 
+import os.path
+import matplotlib.pyplot as plt
+import time
+import scipy.signal as signal
 from scipy.io import wavfile
 from scipy.integrate import quad
 from scipy import interpolate
 from numpy import pi, cos, arange, fft, linspace
-import os.path
-import matplotlib.pyplot as plt
-import time
 
 # CONSTANTS 
 # GLOBAL VARIABLES
@@ -118,7 +119,7 @@ def simulate_amplitude_modulation(k, m, fc, t):
         Sample time of signal
     Returns:
     -------
-    am: ndarray
+    am_modulated_signal: ndarray
         Array of evenly spaced values with the time range modulation.
     """    
     min_time = 0
@@ -139,24 +140,101 @@ def simulate_amplitude_modulation(k, m, fc, t):
     # Plot the Fourier transform of carrier fft signal
     plot_signal(carrier_signal_fft_freq, abs(carrier_signal_fft), "Carrier Signal in Frequency", "Frequency(hz)", "|F(w)|", min(carrier_signal_fft_freq), max(carrier_signal_fft_freq))
 
-    print('Señal Portadora (Frecuencia [fc]): ', fc, 'hz.')
-    print('Señal Portadora (Frecuencia de Muestreo [fsc]): ', len(carrier_time), 'hz.')
-    #plt.show()
-
-    # Interpolacion de la señal original a la frecuencia de la portadora
-    print("frecuencia del audio :"+ str(fs))
+    # Interpolation of the original signal to the carrier frequency
     interpolated_signal = get_interpolated_signal(signal, fs)
 
-    print("largo de la señal "+ str(len(interpolated_signal(carrier_time))))
-    print("largo de la señal portadora "+ str(len(carrier_signal)))
-    plot_signal(carrier_time, interpolated_signal(carrier_time), "Interpolated Signal in time", "Time(s)", "Amplitude", min_time, max_time)
+    # Plot the interpolated signal
+    #plot_signal(carrier_time, interpolated_signal(carrier_time), "Interpolated Signal in time", "Time(s)", "Amplitude", min_time, max_time)
 
-
+    # Get the interpolated signal
     am_modulated_signal = interpolated_signal(carrier_time)*carrier_signal
-    plot_signal(carrier_time, am_modulated_signal, "Modulated Signal in time", "Time(s)", "Amplitude", min_time, max_time)
-    plt.show()
 
-    return 1
+    # Plot the modulated signal
+    plot_signal(carrier_time, am_modulated_signal, "Modulated Signal in time", "Time(s)", "Amplitude", min_time, max_time)
+    
+    # Fourier transforma of modulated signal
+    modulated_signal_fft_freq, modulated_signal_fft = get_fourier_transform(carrier_sample_rate, am_modulated_signal)
+
+    # Plot the fourier transforma of modulated signal
+    plot_signal(modulated_signal_fft_freq, abs(modulated_signal_fft), "Modulated Signal in Frequency", "Frequency(hz)", "|F(w)|", min(modulated_signal_fft_freq), max(modulated_signal_fft_freq))
+    
+    return am_modulated_signal
+
+def simulate_amplitude_demodulation(k, m, fc, t):
+    """ Get amplitude demodulation (AM) simulation
+    
+    Return amplitude demodulation (AM)
+    
+    Parameters:
+    ----------
+    k: int
+        Modulation index or frequency deviation
+    m: tuple
+        Message to modulate (fs and signal in this project)
+    fc : int
+        Sample rate of carrier signal in Hz. 
+    t : ndarray
+        Sample time of signal
+    Returns:
+    -------
+    am_demodulated_signal: ndarray
+        Array of evenly spaced values with the time range modulation.
+    """    
+    min_time = 0
+    max_time = t[-1]
+    
+    fs = m[0]
+    signal = m[1]
+
+    # Carrier Signal
+    carrier_time, carrier_signal, carrier_sample_rate = am_carrier_signal(fc, t)
+
+    # Demodulate signal
+    am_demodulated_signal = signal*carrier_signal
+
+    # Fourier transforma of demodulated signal
+    demodulated_signal_fft_freq, demodulated_signal_fft = get_fourier_transform(carrier_sample_rate, am_demodulated_signal)
+    
+    # Plot the fourier transform of demodulated signal
+    plot_signal(demodulated_signal_fft_freq, abs(demodulated_signal_fft), "Demodulated Signal in Frequency without low pass filter", "Frequency(hz)", "|F(w)|", min(demodulated_signal_fft_freq), max(demodulated_signal_fft_freq))
+    
+    # Apply low pass filter
+    demodulated_signal_filtered = get_low_pass_filter(carrier_sample_rate, am_demodulated_signal, fc)
+
+    # Fourier transforma of demodulated signal
+    demodulated_signal_filtered_fft_freq, demodulated_signal_filtered_fft = get_fourier_transform(carrier_sample_rate, demodulated_signal_filtered)
+
+    # Plot the fourier transform of demodulated signal with filter
+    plot_signal(demodulated_signal_filtered_fft_freq, abs(demodulated_signal_filtered_fft), "Demodulated Signal in Frequency with low pass filter", "Frequency(hz)", "|F(w)|", min(demodulated_signal_filtered_fft_freq), max(demodulated_signal_filtered_fft_freq))
+    plot_signal(demodulated_signal_filtered_fft_freq, abs(demodulated_signal_filtered_fft), "Demodulated Signal in Frequency with low pass filter (Zoom)", "Frequency(hz)", "|F(w)|", -fs/2, fs/2)
+      
+    # Plot the demodulated signal
+    plot_signal(carrier_time, am_demodulated_signal, "Demodulated Signal in time", "Time(s)", "Amplitude", min_time, max_time)
+    
+    return am_demodulated_signal
+
+def get_low_pass_filter(fs, wave, cut_fs):
+    """ Obtain the wave filter by lowpass.
+    
+    Returns: The filtered output with the same shape as `wave`.
+     
+    Parameters:
+    ----------
+    fs : int
+        Sample rate of wave. 
+    wave : numpy array
+        Sample data of wave.
+    cut_fs: int
+        Cutoff frequency.
+    Returns:
+    -------
+    y: ndarray
+        The filtered output with the same shape as `wave`.
+   """
+    order = 4
+    b, a = signal.butter(order, cut_fs, 'lowpass', analog=False, fs=fs)
+    y = signal.filtfilt(b, a, wave, axis=0)
+    return y
 
 def simulate_frequency_modulation(k, m, fc, t):
     """ Get frequency modulation (FM) simulation
@@ -262,28 +340,31 @@ def main():
          # Reading the audio file
         fs, signal = wavfile.read(filename)
         t = get_time_audio_signal(fs, signal)
-
-        # Getting the fft.
-        signal_fft_freq, signal_fft = get_fourier_transform(fs, signal)
-        #am = simulate_amplitude_modulation(1, signal, fs, t)
         
-        #Grafico y transformada
+        # Plot the original signal
         plot_signal(t, signal, "Signal in time", "Time(s)", "Amplitude", min(t), max(t))
-        plot_signal(signal_fft_freq, abs(signal_fft), "Signal in Frequency", "Frequency(hz)", "|F(w)|", min(signal_fft_freq), max(signal_fft_freq))
-        #Calcular la frecuencia maxima de la señal original
-        print('Señal de audio (Frecuencia de Muestreo [fs]): ', fs, 'hz.')
-        print('Señal de audio (Frecuencia Máxima [fm]): ', (fs/2), 'hz.')
-        # fm(frecuencia maxima de la señal) = 4096hz
-        # fc >> fm >> 4096hz
-
-        # es necesario muestrear esta frecuencia cumpliendo el teorema de nyquist
-        # es decir, carrier_sample_rate >> 2fc
         
-        # frecuencia de la portadora
+        # Fourier transform of original signal
+        signal_fft_freq, signal_fft = get_fourier_transform(fs, signal)
+
+        # Plot the fourier transform of original signal
+        plot_signal(signal_fft_freq, abs(signal_fft), "Signal in Frequency", "Frequency(hz)", "|F(w)|", min(signal_fft_freq), max(signal_fft_freq))
+        
+        # AM Modulation
         k = 1
-        fc = 24000 # hz
+        fc = 14000 # hz
         m = (fs, signal)
-        simulate_amplitude_modulation(k, m, fc, t)
+        am_modulated_signal = simulate_amplitude_modulation(k, m, fc, t)
+
+        # AM Demodulacion
+        m = (fs, am_modulated_signal)
+        simulate_amplitude_demodulation(k, m, fc, t)
+
+        plt.show()
+        # Transformada de Fourier de la señal Demodulada
+        # Aplicacion del filtro pasa bajos
+        # Transformada de Fourier de la señal demodulada luego de filtro
+
         '''# frecuencia de muestreo de la portadora
         carrier_sample_rate = 4*fc #3000 hz
         carrier_time = arange(0, t[-1], 1/carrier_sample_rate)
@@ -309,13 +390,7 @@ def main():
         plot_signal(carrier_time, am_modulated_signal, "Modulated Signal in time", "Time(s)", "Amplitude", 0, t[-1])
         plt.show()
         '''
-        # Transformada de Fourier de la señal interpolada
-        # Transformada de Fourier de la señal Modulada
-
-        # Demodulacion
-        # Transformada de Fourier de la señal Demodulada
-        # Aplicacion del filtro pasa bajos
-        # Transformada de Fourier de la señal demodulada luego de filtro
+        
 
         # Modulacion FM
         # Grafico en el tiempo FM
